@@ -6,11 +6,13 @@ output: github_document
 
 ```{r}
 library(tidyverse)
+library(modelr)
 set.seed(1)
 ```
 
 # Problem 1
-First load and tidy birth weight data
+First load and tidy birth weight data.  
+Note that the Children's Hospital of Philadelphia defines low birth weight as less than 2500 grams (5 lbs 8 oz).
 ```{r}
 bwt_data = read_csv(file = "./data/birthweight.csv") %>% 
   mutate(
@@ -23,8 +25,95 @@ bwt_data = read_csv(file = "./data/birthweight.csv") %>%
                      labels = c("absent","present")),
     mrace = factor(mrace, levels = c(1,2,3,4,8,9), 
                    labels = c("white","black","asian","puerto rican",
-                              "other","unknown")),
+                              "other","unknown"))
   )
+
+map(bwt_data, ~sum(is.na(.))) #check for missing values
+
 ```
 
+## Regression Model
+I hypothesize these factors may impact baby birthweight:  
+
+* Baby length
+* Gestational age
+* Presence of malformations
+* Number of previous live births
+* Mom's pre-pregnancy BMI
+* Cigarettes smoked during pregnancy  
+
+I start with a linear regression using these as covariates.
+```{r}
+lr1 = lm(bwt ~ blength + gaweeks + malform + parity + ppbmi + smoken,
+         data = bwt_data)
+lr1 %>% 
+  broom::tidy() %>% 
+  knitr::kable(digits = 2)
+
+bwt_data %>% 
+  count(malform) %>% 
+  knitr::kable()
+```
+
+It appears as though the malformations covariate is not significant. Upon further exploration we see that only 15 subjects have this malformation marked as present. Due to the small sample size I'll leave it out of the model. The rest remains the same.  
+  
+Our new model is:
+
+```{r}
+lr2 = lm(bwt ~ blength + gaweeks + parity + ppbmi + smoken,
+         data = bwt_data)
+summary(lr2)
+```
+
+### Model Diagnostics
+```{r}
+#add residuals and predictions (fitted bwt values)
+bwt_diagnostics = bwt_data %>% 
+  modelr::add_residuals(lr2) %>% 
+  modelr::add_predictions(lr2)
+
+#plot residuals vs. predictions
+bwt_diagnostics %>% 
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point() +
+  geom_vline(xintercept = 2500, size = 1, color = "red") +
+  ylim(-1000, 1000) + xlim(2000, 4000) +
+  ggtitle("Residuals vs. Predicted Bwt Values")
+
+```
+
+### Comparing to Other Models
+We compare this model to the following models  
+1. One using length at birth and gestational age as predictors (main effects only)  
+2. One using head circumference, length, sex, and all interactions (including the three-way interaction) between these  
+```{r}
+mod1 = lm(bwt ~ blength + gaweeks, data = bwt_data)
+summary(mod1)
+
+mod2 = lm(bwt ~ bhead + blength + babysex + 
+            bhead*blength + bhead*babysex + blength*babysex +
+            bhead*blength*babysex, data = bwt_data)
+summary(mod2)
+```
+
+Now we use cross validation to compare these models!
+```{r}
+cv_data = 
+  crossv_mc(bwt_data, 100)
+
+cv_data = 
+  cv_df %>% 
+  mutate(my_mod  = map(train, ~lm(bwt ~ blength + gaweeks + parity + 
+                                    ppbmi + smoken, data = .x)),
+         mod1  = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+         mod2  = map(train, ~lm(bwt ~ bhead + blength + babysex + 
+            bhead*blength + bhead*babysex + blength*babysex +
+            bhead*blength*babysex, data = .x))) %>% 
+  mutate(rmse_mine = map2_dbl(my_mod, test, 
+                                ~rmse(model = .x, data = .y)),
+         rmse_mod1 = map2_dbl(mod1, test, 
+                                ~rmse(model = .x, data = .y)),
+         rmse_mod2 = map2_dbl(mod2, test, 
+                                ~rmse(model = .x, data = .y)))
+```
 
