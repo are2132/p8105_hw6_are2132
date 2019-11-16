@@ -86,23 +86,15 @@ bwt_diagnostics %>%
 We compare this model to the following models  
 1. One using length at birth and gestational age as predictors (main effects only)  
 2. One using head circumference, length, sex, and all interactions (including the three-way interaction) between these  
-```{r}
-mod1 = lm(bwt ~ blength + gaweeks, data = bwt_data)
-summary(mod1)
-
-mod2 = lm(bwt ~ bhead + blength + babysex + 
-            bhead*blength + bhead*babysex + blength*babysex +
-            bhead*blength*babysex, data = bwt_data)
-summary(mod2)
-```
-
+  
+  
 Now we use cross validation to compare these models!
 ```{r}
 cv_data = 
   crossv_mc(bwt_data, 100)
 
 cv_data = 
-  cv_df %>% 
+  cv_data %>% 
   mutate(my_mod  = map(train, ~lm(bwt ~ blength + gaweeks + parity + 
                                     ppbmi + smoken, data = .x)),
          mod1  = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
