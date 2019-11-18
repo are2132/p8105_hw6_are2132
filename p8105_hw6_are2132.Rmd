@@ -142,11 +142,12 @@ boot_straps =
   weather_df %>% 
   modelr::bootstrap(n = 1000)
 
-names(boot_straps)
-as_data_frame(boot_straps$strap[[1]])
+#names(boot_straps)
+#as_data_frame(boot_straps$strap[[1]])
 ```
 
-Then find some summary stats
+Then we use map to take a linear regression of each bootstrap sample,  
+use broom::tidy and glance to get the summary stats, and mutate/wrangle/pivot the giant dataframe of values to end up with the desired statistics, r^2^ and log($\beta$~0~ * $\beta$~1~)
 ```{r}
 boot_summary = boot_straps %>% 
   mutate(
@@ -156,13 +157,17 @@ boot_summary = boot_straps %>%
   select(-strap, -models) %>% 
   unnest(c(glances, tidies), names_repair = "universal") %>% 
   pivot_wider(  #outputs b0, b1, r2
-    names_from = term,
-    values_from = estimate, r.squared)
+    names_from = term,          #intercept (b0) & estimate (b1)
+    names_repair = "universal", #removes () around intercept name
+    values_from = estimate, r.squared) %>% 
+  mutate(
+    logbb = log(.Intercept.*tmin)
+  )
+```
 
 
-  
-
-
+TESTING>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+```{r}
 old_boot = boot_straps %>% 
   mutate(
     models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
@@ -183,10 +188,5 @@ bb %>%
     r2 = mean(r.squared),
     logbb = mean(log(.Intercept.*tmin))
   )
-```
-
-
-```{r}
-
 ```
 
