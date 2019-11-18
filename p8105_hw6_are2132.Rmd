@@ -82,7 +82,7 @@ bwt_diagnostics %>%
 
 ```
 
-### Comparing to Other Models
+## Comparing to Other Models
 We compare this model to the following models  
 1. One using length at birth and gestational age as predictors (main effects only)  
 2. One using head circumference, length, sex, and all interactions (including the three-way interaction) between these  
@@ -107,5 +107,86 @@ cv_data =
                                 ~rmse(model = .x, data = .y)),
          rmse_mod2 = map2_dbl(mod2, test, 
                                 ~rmse(model = .x, data = .y)))
+
+cv_data %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+
+# Problem 2
+First load in weather data
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+Next take 5,000 bootstrap samples from weather data
+```{r}
+boot_straps = 
+  weather_df %>% 
+  modelr::bootstrap(n = 1000)
+
+names(boot_straps)
+as_data_frame(boot_straps$strap[[1]])
+```
+
+Then find some summary stats
+```{r}
+boot_summary = boot_straps %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
+    glances = map(models, broom::glance),
+    tidies = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest(c(glances, tidies), names_repair = "universal") %>% 
+  pivot_wider(  #outputs b0, b1, r2
+    names_from = term,
+    values_from = estimate, r.squared)
+
+
+  
+
+
+old_boot = boot_straps %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
+    glances = map(models, broom::glance),
+    tidies = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest(c(glances, tidies), names_repair = "universal")
+
+
+bb = pivot_wider(
+  old_boot,
+  names_from = term,
+  names_repair = "universal",
+  values_from = estimate, r.squared)
+
+bb %>% 
+  summarize(
+    r2 = mean(r.squared),
+    logbb = mean(log(.Intercept.*tmin))
+  )
+```
+
+
+```{r}
+
 ```
 
