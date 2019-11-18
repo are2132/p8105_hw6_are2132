@@ -32,7 +32,7 @@ map(bwt_data, ~sum(is.na(.))) #check for missing values
 
 ```
 
-## Regression Model
+## My Regression Model
 I hypothesize these factors may impact baby birthweight:  
 
 * Baby length
@@ -58,7 +58,6 @@ bwt_data %>%
 It appears as though the malformations covariate is not significant. Upon further exploration we see that only 15 subjects have this malformation marked as present. Due to the small sample size I'll leave it out of the model. The rest remains the same.  
   
 Our new model is:
-
 ```{r}
 lr2 = lm(bwt ~ blength + gaweeks + parity + ppbmi + smoken,
          data = bwt_data)
@@ -79,15 +78,15 @@ bwt_diagnostics %>%
   geom_vline(xintercept = 2500, size = 1, color = "red") +
   ylim(-1000, 1000) + xlim(2000, 4000) +
   ggtitle("Residuals vs. Predicted Bwt Values")
-
 ```
+
+The red vertical line represents the defined cutoff for low birthweight (< 2500 grams).  
 
 ## Comparing to Other Models
 We compare this model to the following models  
 1. One using length at birth and gestational age as predictors (main effects only)  
 2. One using head circumference, length, sex, and all interactions (including the three-way interaction) between these  
-  
-  
+    
 Now we use cross validation to compare these models!
 ```{r}
 cv_data = 
@@ -119,6 +118,8 @@ cv_data %>%
   ggplot(aes(x = model, y = rmse)) + geom_violin()
 ```
 
+It looks like model 2 is definitely the best with the lowest distribution of prediction errors.  
+
 
 # Problem 2
 First load in weather data
@@ -146,10 +147,11 @@ big_boot =
 #as_data_frame(big_boot$strap[[1]])
 ```
 
-Then we use map to take a linear regression of each bootstrap sample,  
-use broom::tidy and glance to get the summary stats, and mutate/wrangle/pivot the giant dataframe of values to end up with the desired statistics, r^2^ and log($\beta$~0~ * $\beta$~1~)
+Then we use map to take a linear regression of each bootstrap sample, use broom::tidy and glance to get the summary stats, and mutate/wrangle/pivot the giant dataframe of values to end up with the desired statistics, r^2^ and log(b~0~ * b~1~)
 ```{r}
-bigger_boot = big_boot %>% 
+# (not the most descriptive variable name, 
+# but can't not make the spongebob reference)
+bigger_boot = big_boot %>%
   mutate(
     models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
     glances = map(models, broom::glance),
@@ -175,38 +177,27 @@ ggplot(bigger_boot, aes(x = r.squared)) +
 ggplot(bigger_boot, aes(x = logbb)) + 
   geom_histogram() + ggtitle("Log(b0*b1) for 5,000 bootstraps")
 ```
+
 Both distributions are approximately normal. The peak of the distribution/median r^2^ appears to be just over 0.91, indicating that the model fits well. r^2^ = 0.91 would mean that about 91% of the variation in tmax can be explained by tmin.  
   
-The median for log($\beta$~0~ * $\beta$~1~) appears to be around 2.02.
+The median for log(b~0~ * b~1~) appears to be around 2.02.
 
-## Quantiles
+## Quantiles & Confidence Intervals
 ```{r}
-baby_boot
+ordered_r2 = bigger_boot %>% 
+  arrange(r.squared)
+
+r2_lower = pull(ordered_r2, r.squared)[125]  #2.5 percentile
+r2_upper = pull(ordered_r2, r.squared)[4875] #97.5 percentile
+
+ordered_logbb = bigger_boot %>% 
+  arrange(logbb)
+
+bb_lower = pull(ordered_logbb, logbb)[125]  #2.5 percentile
+bb_upper = pull(ordered_logbb, logbb)[4875] #97.5 percentile
 ```
 
-
-
-TESTING>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-```{r}
-old_boot = big_boot %>% 
-  mutate(
-    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
-    glances = map(models, broom::glance),
-    tidies = map(models, broom::tidy)) %>% 
-  select(-strap, -models) %>% 
-  unnest(c(glances, tidies), names_repair = "universal")
-
-
-bb = pivot_wider(
-  old_boot,
-  names_from = term,
-  names_repair = "universal",
-  values_from = estimate, r.squared)
-
-bb %>% 
-  summarize(
-    r2 = mean(r.squared),
-    logbb = mean(log(.Intercept.*tmin))
-  )
-```
-
+Extracting the 2.5 and 97.5% quantiles from our list of 5,000 bootstrap samples, we end up with the following confidence intervals:  
+  
+95% CI for r^2^ = (`r round(r2_lower, 3)`, `r round(r2_upper,3)`)  
+95% CI for log(b~0~ * b~1~) = (`r round(bb_lower,3)`, `r round(bb_upper,3)`)
